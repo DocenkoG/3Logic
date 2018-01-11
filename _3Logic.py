@@ -15,9 +15,10 @@ import csv
 
 
 def getXlsString(sh, i, in_columns_j):
+    #print(type(sh))                    #   <class 'xlrd.sheet.Sheet'>
     impValues = {}
     for item in in_columns_j.keys() :
-        j = in_columns_j[item]
+        j = in_columns_j[item]-1
         if item in ('закупка','продажа','цена со скидкой','цена_') :
             if getCell(row=i, col=j, isDigit='N', sheet=sh) == '' :       # .find('Звоните') >=0 :
                 impValues[item] = '0.1'
@@ -78,26 +79,26 @@ def convert_csv2csv( cfg ):
 
 
 
-def convert2csv( cfgFName ):
-    basicNamelist, basic = config_read( cfgFName, 'basic' )
-    csvFName  = basic['filename_out']
-    sheetName = basic['sheetname']
-    priceFName= basic['filename_in']
+def convert2csv(cfg):
+    csvFName  = cfg.get('basic','filename_out')
+    priceFName= cfg.get('basic','filename_in')
+    sheetName = cfg.get('basic','sheetname')
     
-    log.debug('Reading price ' + priceFName )
+    log.debug('Reading file ' + priceFName )
     sheet = sheetByName(fileName = priceFName, sheetName = sheetName)
     if not sheet :
         log.error("Нет листа "+sheetName+" в файле "+ priceFName)
         return False
-    out_cols, out_template = config_read(cfgFName, 'cols_out')
-    in_cols,  in_cols_j    = config_read(cfgFName, 'cols_in')
+    log.debug("Sheet   "+sheetName)
+    out_cols = cfg.options("cols_out")
+    in_cols  = cfg.options("cols_in")
+    out_template = {}
+    for vName in out_cols :
+         out_template[vName] = cfg.get("cols_out", vName)
+    in_cols_j = {}
+    for vName in in_cols :
+         in_cols_j[vName] = cfg.getint("cols_in",  vName)
     #brands,   discount     = config_read(cfgFName, 'discount')
-    for k in in_cols_j.keys():
-        p = in_cols_j[k].find(' ')
-        if p>0 :
-            in_cols_j[k] = int(in_cols_j[k][ :p])                                   # -1              # xls
-        else:
-            in_cols_j[k] = int(in_cols_j[k]     )                                   # -1              # xls
     #for k in discount.keys():
     #    discount[k] = (100 - int(discount[k]))/100
     #print(discount)
@@ -138,18 +139,12 @@ def convert2csv( cfgFName ):
     return
     '''
 
-    brand   = ''
-    grp2    = ''
-    grp1    = ''
-    brand_koeft = 1
     recOut  ={}
-
-#   for i in range(1, sheet.nrows) :                                    # xls
-    for i in range(1, sheet.max_row +1) :                               # xlsx
+    for i in range(1, sheet.nrows) :                                     # xls
+#    for i in range(1, sheet.max_row +1) :                               # xlsx
         i_last = i
         try:
-            #print('i =',i,)
-            '''                                                         # xls 
+            '''
             xfx = sheet.cell_xf_index(i, 0)
             xf  = book.xf_list[xfx]
             level = xf.alignment.indent_level
@@ -157,20 +152,11 @@ def convert2csv( cfgFName ):
             ccc   = sheet.cell(i, 0)
             value = ccc.value   
             '''
-            impValues = getXlsxString(sheet, i, in_cols_j)
-            try:
+#            impValues = getXlsxString(sheet, i, in_cols_j)
+            impValues = getXlsString(sheet, i, in_cols_j)
+            try:                                      # Пустое поле наследует значение из предыдущей строки.
                 if  impValues["grp1"] =="":  impValues["grp1"] = grp1  
                 else: grp1 = impValues["grp1"]
-            except Exception as e:
-                pass
-            try:
-                if  impValues["grp2"] =="":  impValues["grp2"] = grp2     
-                else: grp2    = impValues["grp2"]
-            except Exception as e:
-                pass
-            try:
-                if  impValues["brand"]=="":  impValues["brand"]= brand   
-                else: brand  = impValues["brand"]
             except Exception as e:
                 pass
             for outColName in out_template.keys() :
@@ -199,27 +185,6 @@ def convert2csv( cfgFName ):
 
     log.info('Обработано ' +str(i_last)+ ' строк.')
     outFile.close()
-
-
-
-def config_read( cfgFName, partName ):
-    global cfg
-    cfg = configparser.ConfigParser(inline_comment_prefixes=('#'))
-    keyList = []
-    keyDict = {}
-    if  os.path.exists('confidential.cfg'):     
-        cfg.read('confidential.cfg', encoding='utf-8')
-    if  os.path.exists(cfgFName):     
-        cfg.read( cfgFName, encoding='utf-8')
-        if cfg.has_section(partName):
-            keyList = cfg.options(partName)
-            for vName in keyList :
-                if ('' != cfg.get(partName, vName)) :
-                    keyDict[vName] = cfg.get(partName, vName)
-    else: 
-        log.debug('Нет файла конфигурации '+cfgFName)
-    
-    return keyList, keyDict
 
 
 
@@ -290,27 +255,32 @@ def download( cfgName ):
 
 
 
-def is_file_fresh(priceName, cfgFName):
-    basicNamelist, basic = config_read( cfgFName, 'basic' )
-    qty_days = basic['срок годности']
-    p = qty_days.find(' ')
-    if p>0 :
-        qty_days = int(qty_days[ :p]) 
-    else:
-        qty_days = int(qty_days     )
+def is_file_fresh(fileName, qty_days):
     qty_seconds = qty_days *24*60*60 
-    if os.path.exists( priceName):
-        price_datetime = os.path.getmtime(priceName)
+    if os.path.exists( fileName):
+        price_datetime = os.path.getmtime(fileName)
     else:
-        log.error('Не найден файл  '+ priceName)
+        log.error('Не найден файл  '+ fileName)
         return False
 
     if price_datetime+qty_seconds < time.time() :
         file_age = round((time.time()-price_datetime)/24/60/60)
-        log.error('Файл "'+priceName+'" устарел!  Допустимый период '+ str(qty_days)+' дней, а ему ' + str(file_age) )
+        log.error('Файл "'+fileName+'" устарел!  Допустимый период '+ str(qty_days)+' дней, а ему ' + str(file_age) )
         return False
     else:
         return True
+
+
+
+def config_read( cfgFName ):
+    cfg = configparser.ConfigParser(inline_comment_prefixes=('#'))
+    if  os.path.exists('confidential.cfg'):     
+        cfg.read('confidential.cfg', encoding='utf-8')
+    if  os.path.exists(cfgFName):     
+        cfg.read( cfgFName, encoding='utf-8')
+    else: 
+        log.debug('Нет файла конфигурации '+cfgFName)
+    return cfg
 
 
 
@@ -323,23 +293,20 @@ def make_loger():
 
 def processing(cfgFName):
     log.info('----------------------- Processing '+cfgFName )
-    basicNamelist, basic = config_read( cfgFName, 'basic' )
-    csvFName  = basic['filename_out']
-#    sheetName = basic['sheetname']
-    piceFName = basic['filename_in']
-#    dwnlist, download = config_read( cfgFName, 'download' )
-#    print(dwnlist)
-#    unittest  = download['filename_out']
+    cfg = config_read(cfgFName)
+    csvFName  = cfg.get('basic','filename_out')
+    priceFName= cfg.get('basic','filename_in')
     
     if cfg.has_section('download'):
-        result = download(cfgFName)
-    if  is_file_fresh( piceFName, cfgFName):
+        result = download(cfg)
+    if is_file_fresh( priceFName, int(cfg.get('basic','срок годности'))):
         #os.system( dealerName + '_converter_xlsx.xlsm')
-        convert_csv2csv(cfg)
+        convert2csv(cfg)
     folderName = os.path.basename(os.getcwd())
     if os.path.exists( csvFName    ) : shutil.copy2( csvFName ,    'c://AV_PROM/prices/' + folderName +'/'+csvFName )
     if os.path.exists( 'python.log') : shutil.copy2( 'python.log', 'c://AV_PROM/prices/' + folderName +'/python.log')
     if os.path.exists( 'python.1'  ) : shutil.copy2( 'python.log', 'c://AV_PROM/prices/' + folderName +'/python.1'  )
+
 
 
 
