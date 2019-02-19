@@ -302,11 +302,6 @@ def processing(cfgFName):
     if is_file_fresh( priceFName, int(cfg.get('basic','срок годности'))):
         #os.system( dealerName + '_converter_xlsx.xlsm')
         convert2csv(cfg)
-    folderName = os.path.basename(os.getcwd())
-    if os.path.exists( csvFName    ) : shutil.copy2( csvFName ,    'c://AV_PROM/prices/' + folderName +'/'+csvFName )
-    if os.path.exists( 'python.log') : shutil.copy2( 'python.log', 'c://AV_PROM/prices/' + folderName +'/python.log')
-    if os.path.exists( 'python.1'  ) : shutil.copy2( 'python.log', 'c://AV_PROM/prices/' + folderName +'/python.1'  )
-
 
 
 
